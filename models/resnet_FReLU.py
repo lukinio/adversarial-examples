@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from nupic.torch.modules import SparseWeights, KWinners, KWinners2d
+from models.activation import FlattenReLU, Lambda
 
 
-class ResNet(nn.Module):
+class FResNet(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -54,13 +55,13 @@ class ResNet(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Linear(512*4*4, 4000),
-            nn.ReLU(),
+            Lambda(FlattenReLU.apply),
             nn.Linear(4000, 2000),
-            nn.ReLU(),
+            Lambda(FlattenReLU.apply),
             nn.Linear(2000, 1000),
-            nn.ReLU(),
+            Lambda(FlattenReLU.apply),
             nn.Linear(1000, 100),
-            nn.ReLU(),
+            Lambda(FlattenReLU.apply),
             nn.Linear(100, 10)
         )
 
@@ -74,7 +75,7 @@ class ResNet(nn.Module):
         return out
 
 
-class SparseResNet(nn.Module):
+class FSparseResNet(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -124,16 +125,16 @@ class SparseResNet(nn.Module):
 
         self.classifier = classifier = nn.Sequential(
             SparseWeights(nn.Linear(512*4*4, 4000), 0.1),
-            KWinners(n=4000, percent_on=0.1, boost_strength=1.4),
+            Lambda(FlattenReLU.apply),
 
             SparseWeights(nn.Linear(4000, 2000), 0.1),
-            KWinners(n=2000, percent_on=0.1, boost_strength=1.4),
+            Lambda(FlattenReLU.apply),
 
             SparseWeights(nn.Linear(2000, 1000), 0.1),
-            KWinners(n=1000, percent_on=0.1, boost_strength=1.4),
+            Lambda(FlattenReLU.apply),
 
             SparseWeights(nn.Linear(1000, 100), 0.1),
-            KWinners(n=100, percent_on=0.10, boost_strength=1.4),
+            Lambda(FlattenReLU.apply),
 
             nn.Linear(100, 10)
         )
