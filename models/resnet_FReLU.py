@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from nupic.torch.modules import SparseWeights, KWinners, KWinners2d
-from models.activation import FlattenReLU, Lambda
+from models.activation import DTLinear
 
 
 class FResNet(nn.Module):
@@ -54,14 +54,10 @@ class FResNet(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(512*4*4, 4000),
-            Lambda(FlattenReLU.apply),
-            nn.Linear(4000, 2000),
-            Lambda(FlattenReLU.apply),
-            nn.Linear(2000, 1000),
-            Lambda(FlattenReLU.apply),
-            nn.Linear(1000, 100),
-            Lambda(FlattenReLU.apply),
+            DTLinear(512*4*4, 4000),
+            DTLinear(4000, 2000),
+            DTLinear(2000, 1000),
+            DTLinear(1000, 100),
             nn.Linear(100, 10)
         )
 
@@ -124,18 +120,10 @@ class FSparseResNet(nn.Module):
         )
 
         self.classifier = classifier = nn.Sequential(
-            SparseWeights(nn.Linear(512*4*4, 4000), 0.1),
-            Lambda(FlattenReLU.apply),
-
-            SparseWeights(nn.Linear(4000, 2000), 0.1),
-            Lambda(FlattenReLU.apply),
-
-            SparseWeights(nn.Linear(2000, 1000), 0.1),
-            Lambda(FlattenReLU.apply),
-
-            SparseWeights(nn.Linear(1000, 100), 0.1),
-            Lambda(FlattenReLU.apply),
-
+            SparseWeights(DTLinear(512*4*4, 4000), 0.1),
+            SparseWeights(DTLinear(4000, 2000), 0.1),
+            SparseWeights(DTLinear(2000, 1000), 0.1),
+            SparseWeights(DTLinear(1000, 100), 0.1),
             nn.Linear(100, 10)
         )
 
