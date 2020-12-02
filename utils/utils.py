@@ -1,6 +1,5 @@
 import torch
-from sklearn.metrics import accuracy_score
-from matplotlib import pyplot as plt; plt.style.use('default')
+import matplotlib.pyplot as plt
 import numpy as np
 
 def plot_images(X, y, yp, M, N):
@@ -16,3 +15,19 @@ def plot_images(X, y, yp, M, N):
             plt.setp(title, color=('g' if pred_label == y[i*N+j] else 'r'))
             ax[i][j].set_axis_off()
     plt.tight_layout()
+
+
+def plot_learn_curves(hists, labels, ylabel):
+    x = np.arange(1, len(hists[0][0])+1)
+    fig, axes = plt.subplots(nrows=1, ncols=len(hists))
+
+    for i, (hist, yl) in enumerate(zip(hists, ylabel)):
+        for h, l in zip(hist, labels):
+            axes[i].plot(x, h, label=l)
+            axes[i].legend(loc='best')
+            axes[i].set_xlabel('epoch')
+            axes[i].set_ylabel(yl)
+            axes[i].set_title('model loss' if 'loss' in yl else 'model accuracy')
+
+    fig.tight_layout(pad=3.0)
+    plt.show()
