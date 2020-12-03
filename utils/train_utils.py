@@ -112,19 +112,6 @@ def adv_epoch(model, attack, loader, loss_fn, optimizer, sparse=False, device="c
     for k, (inputs, targets) in enumerate(loader, 1):
         start = dt.now().replace(microsecond=0)
         inputs, targets = inputs.to(device), targets.to(device)
-        # Standard Training
-        outputs = model(inputs)
-        loss = loss_fn(outputs, targets)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        if sparse:
-            model.apply(rezero_weights)
-            
-        total_loss += loss.data.item() * inputs.size(0)
-        accuracy += (outputs.max(dim=1)[1] == targets).sum().item()
-        
-        # Adversarial Training
         noise = attack(model, inputs, targets, loss_fn, **kwargs)
         outputs = model(inputs+noise)
         loss = loss_fn(outputs, targets)
@@ -134,18 +121,13 @@ def adv_epoch(model, attack, loader, loss_fn, optimizer, sparse=False, device="c
         if sparse:
             model.apply(rezero_weights)
             
-        adv_loss += loss.data.item() * inputs.size(0)
-        adv_accuracy += (outputs.max(dim=1)[1] == targets).sum().item()
+        total_loss += loss.data.item() * inputs.size(0)
+        accuracy += (outputs.max(dim=1)[1] == targets).sum().item()
         end = dt.now().replace(microsecond=0)
         print(f"adv train iter: {k}/{len(loader)} time: {end-start}", end="\r")
     print(" " * 80, end="\r")
     
-    total_loss /= len(loader.dataset)
-    accuracy /= len(loader.dataset)
-    adv_loss /= len(loader.dataset)
-    adv_accuracy /= len(loader.dataset)
-    
-    return (total_loss, adv_loss), (accuracy, adv_accuracy)
+    return total_loss / len(loader.dataset), accuracy / len(loader.dataset)
 
 
 def adv_train(model, attack, params, tr_loader, vl_loader, loss_fn, optimizer, scheduler=None,
