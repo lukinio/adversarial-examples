@@ -40,7 +40,7 @@ class WideBasic(nn.Module):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, depth, widen_factor, dropout_rate, num_classes):
+    def __init__(self, depth, widen_factor, dropout_rate, num_classes=10):
         super().__init__()
         self.in_planes = 16
 
@@ -79,15 +79,15 @@ class WideResNet(nn.Module):
     
 
 class SparseWideBasic(nn.Module):
-    def __init__(self, in_planes, planes, k_winners, stride=1):
+    def __init__(self, in_planes, planes, k_winners, local=True, boost=1.0, stride=1):
         super().__init__()
         self.block = nn.Sequential(
             nn.BatchNorm2d(in_planes),
-            KWinners2d(in_planes, percent_on=k_winners, local=True),
+            KWinners2d(in_planes, percent_on=k_winners, local=local, boost_strength=boost),
             nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, bias=True),
             
             nn.BatchNorm2d(planes),
-            KWinners2d(planes, percent_on=k_winners, local=True),
+            KWinners2d(planes, percent_on=k_winners, local=local, boost_strength=boost),
             nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=True)
         )
         
@@ -104,7 +104,7 @@ class SparseWideBasic(nn.Module):
 
 
 class SparseWideResNet(nn.Module):
-    def __init__(self, depth, widen_factor, k_winners, num_classes):
+    def __init__(self, depth, widen_factor, k_winners, local, boost=1.0, num_classes=10):
         super().__init__()
         self.in_planes = 16
 
@@ -114,21 +114,21 @@ class SparseWideResNet(nn.Module):
         n_stages = [16, 16*k, 32*k, 64*k]
 
         self.conv1 = conv3x3(3, n_stages[0])
-        self.layer1 = self._wide_layer(SparseWideBasic, n_stages[1], n, k_winners, stride=1)
-        self.layer2 = self._wide_layer(SparseWideBasic, n_stages[2], n, k_winners, stride=2)
-        self.layer3 = self._wide_layer(SparseWideBasic, n_stages[3], n, k_winners, stride=2)
+        self.layer1 = self._wide_layer(SparseWideBasic, n_stages[1], n, k_winners, local, boost, stride=1)
+        self.layer2 = self._wide_layer(SparseWideBasic, n_stages[2], n, k_winners, local, boost, stride=2)
+        self.layer3 = self._wide_layer(SparseWideBasic, n_stages[3], n, k_winners, local, boost, stride=2)
         self.bn = nn.Sequential(
             nn.BatchNorm2d(n_stages[3], momentum=0.9),
-            KWinners2d(n_stages[3], percent_on=k_winners, local=True)
+            KWinners2d(n_stages[3], percent_on=k_winners, local=local)
         )
         self.linear = nn.Linear(n_stages[3], num_classes)
 
-    def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride):
+    def _wide_layer(self, block, planes, num_blocks, k_winners, local, boost, stride):
         strides = [stride] + [1]*(int(num_blocks)-1)
         layers = []
 
         for stride in strides:
-            layers.append(block(self.in_planes, planes, dropout_rate, stride))
+            layers.append(block(self.in_planes, planes, k_winners, local, boost, stride))
             self.in_planes = planes
 
         return nn.Sequential(*layers)
