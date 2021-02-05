@@ -1,148 +1,167 @@
-import torch
+'''ResNet in PyTorch.
+For Pre-activation ResNet, see 'preact_resnet.py'.
+Reference:
+[1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
+    Deep Residual Learning for Image Recognition. arXiv:1512.03385
+'''
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.model_zoo as model_zoo
+
 from nupic.torch.modules import SparseWeights, KWinners, KWinners2d
+
+model_urls = {
+    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+}
+
+model_dir = './pretrained_models'
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
+        self.stride = stride
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
 
 
 class ResNet(nn.Module):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, block, num_blocks, num_classes=10):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.kernel_sizes = [3]
+        self.strides = [1]
+        self.paddings = [1]
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=1)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.linear = nn.Linear(2048, num_classes, bias=False)
 
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
 
-        self.res1 = nn.Sequential(
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU()
-        )
-
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-
-        self.res2 = nn.Sequential(
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(4)
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(512*4*4, 4000),
-            nn.ReLU(),
-            nn.Linear(4000, 2000),
-            nn.ReLU(),
-            nn.Linear(2000, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 100),
-            nn.ReLU(),
-            nn.Linear(100, 10)
-        )
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        out = self.conv1(x)
-        out = self.res1(out) + out
-        out = self.conv2(out)
-        out = self.res2(out) + out
-        out = torch.flatten(out, 1)
-        out = self.classifier(out)
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
         return out
+
+
+def resnet18(pretrained=False, **kwargs):
+    """Constructs a ResNet-18 model.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+    """
+    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+    if pretrained:
+        my_dict = model_zoo.load_url(model_urls['resnet18'], model_dir=model_dir)
+        model.load_state_dict(my_dict, strict=False)
+    return model
+
+
+
+class SparseBasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.kw1 = KWinners2d(planes, percent_on=0.1, local=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.kw2 = KWinners2d(planes, percent_on=0.1, local=False)
+        
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes),
+                KWinners2d(self.expansion*planes, percent_on=0.1, local=False),
+            )
+        self.stride = stride
+
+    def forward(self, x):
+        out = self.kw1(self.bn1(self.conv1(x)))
+        out = self.kw2(self.bn2(self.conv2(out)))
+        out += self.shortcut(x)
+        return out
+
 
 
 class SparseResNet(nn.Module):
-    def __init__(self):
+    def __init__(self, block, num_blocks, num_classes=10):
         super().__init__()
+        self.in_planes = 64
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            KWinners2d(64, percent_on=0.1, local=True),
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.kernel_sizes = [3]
+        self.strides = [1]
+        self.paddings = [1]
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=1)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.linear = nn.Linear(2048, num_classes, bias=False)
 
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            KWinners2d(128, percent_on=0.1, local=True),
-            nn.MaxPool2d(2)
-        )
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
 
-        self.res1 = nn.Sequential(
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            KWinners2d(128, percent_on=0.1, local=True),
-
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            KWinners2d(128, percent_on=0.1, local=True)
-        )
-
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            KWinners2d(256, percent_on=0.1, local=True),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            KWinners2d(512, percent_on=0.1, local=True),
-            nn.MaxPool2d(2)
-        )
-
-        self.res2 = nn.Sequential(
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            KWinners2d(512, percent_on=0.1, local=True),
-
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            KWinners2d(512, percent_on=0.1, local=True),
-            nn.MaxPool2d(4)
-        )
-
-        self.classifier = classifier = nn.Sequential(
-            SparseWeights(nn.Linear(512*4*4, 4000), 0.1),
-            KWinners(n=4000, percent_on=0.1, boost_strength=1.4),
-
-            SparseWeights(nn.Linear(4000, 2000), 0.1),
-            KWinners(n=2000, percent_on=0.1, boost_strength=1.4),
-
-            SparseWeights(nn.Linear(2000, 1000), 0.1),
-            KWinners(n=1000, percent_on=0.1, boost_strength=1.4),
-
-            SparseWeights(nn.Linear(1000, 100), 0.1),
-            KWinners(n=100, percent_on=0.10, boost_strength=1.4),
-
-            nn.Linear(100, 10)
-        )
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        out = self.conv1(x)
-        out = self.res1(out) + out
-        out = self.conv2(out)
-        out = self.res2(out) + out
-        out = torch.flatten(out, 1)
-        out = self.classifier(out)
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
         return out
+
+
+def sparse_resnet18(**kwargs):
+    return SparseResNet(SparseBasicBlock, [2, 2, 2, 2], **kwargs)

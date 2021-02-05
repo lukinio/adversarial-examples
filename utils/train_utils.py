@@ -47,7 +47,7 @@ class ModelTrainer:
                     optimizer.zero_grad()
                     loss.backward()
                     # add clipping to prevent exploding gradients:
-                    nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+                    nn.utils.clip_grad_norm_(model.parameters(), 2)
                     optimizer.step()
                     if self.is_sparse:
                         model.apply(rezero_weights)
@@ -121,6 +121,7 @@ class ModelTrainer:
             if phase_name == "train":
                 optimizer.zero_grad()
                 loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 1)
                 optimizer.step()
                 if self.is_sparse:
                     model.apply(rezero_weights)
@@ -145,7 +146,7 @@ class ModelTrainer:
             train_loss, train_acc = self._adv_epoch(model, attack, loss_fn, optimizer, **params)
             if self.is_sparse:
                 model.apply(update_boost_strength)
-            test_loss, test_acc = self._adv_epoch(model, attack, loss_fn, optimizer=None, **params)
+            test_loss, test_acc = self._epoch(model, loss_fn, optimizer=None)
             if scheduler is not None:
                 scheduler.step(test_loss)
             out = "Epoch: {} Validation Loss: {:.4f} accuracy: {:.4f}, time: {}"
